@@ -97,11 +97,95 @@
     sidebar.classList.remove('open');
   });
 
-  // Placeholder handlers — wired up in Task 10.
   function hidePopover() { popover.hidden = true; }
+
+  function captureSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    const text = sel.toString();
+    if (!text.trim()) return null;
+    if (!content.contains(sel.anchorNode) || !content.contains(sel.focusNode)) return null;
+    const rendered = content.innerText;
+    const idx = rendered.indexOf(text);
+    const before = idx > 0 ? rendered.slice(Math.max(0, idx - 30), idx) : '';
+    const after = idx >= 0 ? rendered.slice(idx + text.length, idx + text.length + 30) : '';
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    return { text, before, after, rect };
+  }
+
+  document.addEventListener('mouseup', () => {
+    if (!reviewMode) return;
+    const cap = captureSelection();
+    if (!cap) { hidePopover(); return; }
+    pendingSelection = cap;
+    popover.hidden = false;
+    popover.style.top = (cap.rect.top + window.scrollY - 36) + 'px';
+    popover.style.left = (cap.rect.left + window.scrollX) + 'px';
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (popover.contains(e.target)) return;
+    hidePopover();
+  });
+
+  $('mdv-popover-add').addEventListener('click', () => {
+    if (!pendingSelection) return;
+    sbQuote.textContent = pendingSelection.text;
+    sbText.value = '';
+    sbInput.hidden = false;
+    sidebar.classList.add('open');
+    sbText.focus();
+    hidePopover();
+  });
+
+  $('mdv-sb-cancel').addEventListener('click', () => {
+    sbInput.hidden = true;
+    pendingSelection = null;
+  });
+
+  $('mdv-sb-save').addEventListener('click', async () => {
+    if (!pendingSelection) return;
+    const text = sbText.value.trim();
+    if (!text) return;
+    const c = {
+      id: 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      selected_text: pendingSelection.text,
+      context_before: pendingSelection.before,
+      context_after: pendingSelection.after,
+      comment: text,
+      created_at: new Date().toISOString(),
+      status: 'open',
+    };
+    comments.push(c);
+    sbInput.hidden = true;
+    pendingSelection = null;
+    renderSidebar();
+    await persist();
+  });
+
+  sbList.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.mdv-sb-delete');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    comments = comments.filter((c) => c.id !== id);
+    renderSidebar();
+    await persist();
+  });
+
+  async function persist() {
+    const r = await fetch('/api/comments?path=' + encodeURIComponent(FILE), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ version: 1, comments }),
+    });
+    if (!r.ok) {
+      console.error('save failed', r.status);
+      alert('Failed to save comment.');
+    }
+  }
 
   loadAll();
 
   // Expose for Task 10 to extend.
-  window.__mdv = { loadAll, render, get comments() { return comments; }, set comments(v) { comments = v; }, renderSidebar, escapeHtml };
+  window.__mdv = { loadAll, render, persist, get comments() { return comments; }, set comments(v) { comments = v; }, renderSidebar, escapeHtml };
 })();
