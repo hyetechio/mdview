@@ -103,16 +103,19 @@
 
   document.addEventListener('mouseup', (e) => {
     if (popover.contains(e.target)) return;
+    if (sbInput.contains(e.target) || sidebar.contains(e.target)) return;
+    if (!sbInput.hidden) return;
     const cap = captureSelection();
     if (!cap) { hidePopover(); return; }
     pendingSelection = cap;
     popover.hidden = false;
-    popover.style.top = (cap.rect.top + window.scrollY - 36) + 'px';
-    popover.style.left = (cap.rect.left + window.scrollX) + 'px';
+    popover.style.top = Math.max(8, cap.rect.top - 36) + 'px';
+    popover.style.left = cap.rect.left + 'px';
   });
 
   document.addEventListener('mousedown', (e) => {
     if (popover.contains(e.target)) return;
+    if (sidebar.contains(e.target)) return;
     hidePopover();
   });
 
