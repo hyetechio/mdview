@@ -1,0 +1,15 @@
+{
+  "name": "mdview",
+  "version": "0.1.0",
+  "description": "Local Markdown reader with comment capture",
+  "private": true,
+  "bin": {
+    "mdview": "bin/mdview"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

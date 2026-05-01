@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+test/fixtures/*.md
+test/fixtures/*.review.json
+!test/fixtures/.gitkeep
