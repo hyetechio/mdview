@@ -1,1 +1,48 @@
-<!doctype html><title>mdview</title>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>mdview</title>
+  <link rel="stylesheet" href="/reader.css">
+</head>
+<body>
+  <div id="mdv-mode-bar">
+    <div class="mdv-mode-left">
+      <label class="mdv-toggle" id="mdv-mode-toggle">
+        <span class="mdv-toggle-track"><span class="mdv-toggle-thumb"></span></span>
+        <span class="mdv-toggle-label">Review mode</span>
+      </label>
+      <span class="mdv-mode-count" id="mdv-count">0 comments</span>
+    </div>
+    <div class="mdv-mode-right">
+      <span id="mdv-filename"></span>
+    </div>
+  </div>
+
+  <main id="mdv-content"></main>
+
+  <aside id="mdv-sidebar">
+    <div class="mdv-sb-header">
+      <span>Comments</span>
+      <button id="mdv-sb-close" type="button" aria-label="close">×</button>
+    </div>
+    <div id="mdv-sb-list"></div>
+    <div id="mdv-sb-input" hidden>
+      <div id="mdv-sb-input-quote"></div>
+      <textarea id="mdv-sb-input-text" rows="3" placeholder="Comment..."></textarea>
+      <div class="mdv-sb-input-actions">
+        <button id="mdv-sb-cancel" type="button">Cancel</button>
+        <button id="mdv-sb-save" type="button">Save</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="mdv-popover" hidden>
+    <button id="mdv-popover-add" type="button">Add comment</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <script src="/reader.js"></script>
+</body>
+</html>
