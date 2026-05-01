@@ -1,0 +1,82 @@
+#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { validatePath } = require('../lib/path-validator');
+
+const PORT = Number(process.env.MDVIEW_PORT || 5237);
+const SERVER_PATH = path.join(__dirname, '..', 'server.js');
+const LOG_DIR = path.join(process.env.HOME || '/tmp', '.mdview');
+const LOG_FILE = path.join(LOG_DIR, 'server.log');
+
+function resolveTarget(arg, root) {
+  const abs = path.resolve(arg);
+  return validatePath(abs, root);
+}
+
+async function probeMdview(port, timeoutMs = 1000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: ctrl.signal });
+    if (!r.ok) return false;
+    const body = await r.json();
+    return body && body.service === 'mdview';
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ensureDaemon() {
+  if (await probeMdview(PORT, 500)) return;
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  const out = fs.openSync(LOG_FILE, 'a');
+  const child = spawn(process.execPath, [SERVER_PATH], {
+    detached: true,
+    stdio: ['ignore', out, out],
+    env: { ...process.env, MDVIEW_PORT: String(PORT) },
+  });
+  child.unref();
+  // poll for readiness up to ~2s
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    if (await probeMdview(PORT, 200)) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`daemon did not start within 2s; check ${LOG_FILE}`);
+}
+
+function openInChrome(url) {
+  spawn('open', ['-a', 'Google Chrome', url], { stdio: 'ignore', detached: true }).unref();
+}
+
+async function main() {
+  const arg = process.argv[2];
+  if (!arg) {
+    process.stderr.write('usage: mdview <file.md>\n');
+    process.exit(1);
+  }
+  let target;
+  try {
+    target = resolveTarget(arg, process.env.HOME);
+  } catch (e) {
+    process.stderr.write(`mdview: ${e.message}\n`);
+    process.exit(1);
+  }
+  try {
+    await ensureDaemon();
+  } catch (e) {
+    process.stderr.write(`mdview: ${e.message}\n`);
+    process.exit(1);
+  }
+  const url = `http://127.0.0.1:${PORT}/?file=${encodeURIComponent(target)}`;
+  openInChrome(url);
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { resolveTarget, probeMdview };
