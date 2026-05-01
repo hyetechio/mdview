@@ -1,8 +1,13 @@
 {
   "name": "mdview",
   "version": "0.1.0",
-  "description": "Local Markdown reader with comment capture",
+  "description": "Local Markdown reader with selection-based comment capture",
   "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyetechio/mdview.git"
+  },
   "bin": {
     "mdview": "bin/mdview"
   },
