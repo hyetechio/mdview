@@ -1,11 +1,13 @@
 (function () {
   'use strict';
 
+  const { initial, reduce, IDLE, PROBE, COMPOSE } = window.CommentState;
+
   const params = new URLSearchParams(location.search);
   const FILE = params.get('file');
   let mdSource = '';
   let comments = [];
-  let pendingSelection = null;
+  let state = initial();
 
   const $ = (id) => document.getElementById(id);
   const content = $('mdv-content');
@@ -77,15 +79,34 @@
     return String(s).replace(/"/g, '&quot;');
   }
 
-  countLabel.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-  });
+  function dispatch(action) {
+    const prev = state;
+    state = reduce(state, action);
+    syncUI(prev, state);
+  }
 
-  $('mdv-sb-close').addEventListener('click', () => {
-    sidebar.classList.remove('open');
-  });
-
-  function hidePopover() { popover.hidden = true; }
+  function syncUI(prev, next) {
+    // Popover: visible iff PROBE.
+    if (next.mode === PROBE && next.selection) {
+      popover.hidden = false;
+      popover.style.top = Math.max(8, next.selection.rect.top - 36) + 'px';
+      popover.style.left = Math.max(8, next.selection.rect.left) + 'px';
+    } else {
+      popover.hidden = true;
+    }
+    // Input pane: visible iff COMPOSE. Reset textarea when entering COMPOSE
+    // or when the active selection changes mid-COMPOSE.
+    if (next.mode === COMPOSE && next.selection) {
+      const selectionChanged = prev.mode !== COMPOSE || prev.selection !== next.selection;
+      sbQuote.textContent = next.selection.text;
+      if (selectionChanged) sbText.value = '';
+      sbInput.hidden = false;
+      sidebar.classList.add('open');
+      if (selectionChanged) sbText.focus();
+    } else {
+      sbInput.hidden = true;
+    }
+  }
 
   function captureSelection() {
     const sel = window.getSelection();
@@ -101,22 +122,27 @@
     return { text, before, after, rect };
   }
 
+  countLabel.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
+
+  $('mdv-sb-close').addEventListener('click', () => {
+    sidebar.classList.remove('open');
+  });
+
   document.addEventListener('mouseup', (e) => {
-    if (popover.contains(e.target)) return;
-    if (sbInput.contains(e.target) || sidebar.contains(e.target)) return;
-    if (!sbInput.hidden) return;
+    // Clicks inside popover or sidebar should not be treated as new selections.
+    if (popover.contains(e.target) || sidebar.contains(e.target)) return;
     const cap = captureSelection();
-    if (!cap) { hidePopover(); return; }
-    pendingSelection = cap;
-    popover.hidden = false;
-    popover.style.top = Math.max(8, cap.rect.top - 36) + 'px';
-    popover.style.left = cap.rect.left + 'px';
+    if (cap) dispatch({ type: 'SELECT', selection: cap });
+    else dispatch({ type: 'CLEAR_SELECTION' });
   });
 
   document.addEventListener('mousedown', (e) => {
-    if (popover.contains(e.target)) return;
-    if (sidebar.contains(e.target)) return;
-    hidePopover();
+    if (popover.contains(e.target) || sidebar.contains(e.target)) return;
+    // Only collapse PROBE when a click starts outside; mouseup will follow.
+    // CLEAR_SELECTION is a no-op in COMPOSE so this won't close the input.
+    if (state.mode === PROBE) dispatch({ type: 'CLEAR_SELECTION' });
   });
 
   $('mdv-popover-add').addEventListener('mousedown', (e) => {
@@ -124,36 +150,29 @@
   });
 
   $('mdv-popover-add').addEventListener('click', () => {
-    if (!pendingSelection) return;
-    sbQuote.textContent = pendingSelection.text;
-    sbText.value = '';
-    sbInput.hidden = false;
-    sidebar.classList.add('open');
-    sbText.focus();
-    hidePopover();
+    dispatch({ type: 'OPEN_COMPOSE' });
   });
 
   $('mdv-sb-cancel').addEventListener('click', () => {
-    sbInput.hidden = true;
-    pendingSelection = null;
+    dispatch({ type: 'CANCEL' });
   });
 
   $('mdv-sb-save').addEventListener('click', async () => {
-    if (!pendingSelection) return;
+    if (state.mode !== COMPOSE || !state.selection) return;
     const text = sbText.value.trim();
     if (!text) return;
+    const sel = state.selection;
     const c = {
       id: 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      selected_text: pendingSelection.text,
-      context_before: pendingSelection.before,
-      context_after: pendingSelection.after,
+      selected_text: sel.text,
+      context_before: sel.before,
+      context_after: sel.after,
       comment: text,
       created_at: new Date().toISOString(),
       status: 'open',
     };
     comments.push(c);
-    sbInput.hidden = true;
-    pendingSelection = null;
+    dispatch({ type: 'SAVE' });
     renderSidebar();
     await persist();
   });
@@ -181,5 +200,11 @@
 
   loadAll();
 
-  window.__mdv = { loadAll, render, persist, get comments() { return comments; }, set comments(v) { comments = v; }, renderSidebar, escapeHtml };
+  window.__mdv = {
+    loadAll, render, persist,
+    get state() { return state; },
+    get comments() { return comments; },
+    set comments(v) { comments = v; },
+    renderSidebar, escapeHtml,
+  };
 })();
