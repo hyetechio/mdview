@@ -5,7 +5,6 @@
   const FILE = params.get('file');
   let mdSource = '';
   let comments = [];
-  let reviewMode = false;
   let pendingSelection = null;
 
   const $ = (id) => document.getElementById(id);
@@ -18,9 +17,6 @@
   const popover = $('mdv-popover');
   const filename = $('mdv-filename');
   const countLabel = $('mdv-count');
-  const toggleEl = $('mdv-mode-toggle');
-  const toggleTrack = toggleEl.querySelector('.mdv-toggle-track');
-  const toggleLabel = toggleEl.querySelector('.mdv-toggle-label');
 
   if (!FILE) {
     content.textContent = 'No ?file= parameter.';
@@ -28,7 +24,6 @@
   }
 
   filename.textContent = FILE.split('/').pop();
-  document.body.classList.add('mdv-read');
 
   async function loadAll() {
     const [mdRes, cRes] = await Promise.all([
@@ -55,7 +50,7 @@
   function renderSidebar() {
     countLabel.textContent = comments.length + ' comment' + (comments.length === 1 ? '' : 's');
     if (comments.length === 0) {
-      sbList.innerHTML = '<div class="mdv-sb-empty">Select text in Review mode to add a comment.</div>';
+      sbList.innerHTML = '<div class="mdv-sb-empty">Select any text to add a comment.</div>';
       return;
     }
     sbList.innerHTML = '';
@@ -82,15 +77,8 @@
     return String(s).replace(/"/g, '&quot;');
   }
 
-  toggleEl.addEventListener('click', (e) => {
-    e.preventDefault();
-    reviewMode = !reviewMode;
-    toggleTrack.classList.toggle('active', reviewMode);
-    toggleLabel.classList.toggle('active', reviewMode);
-    document.body.classList.toggle('mdv-read', !reviewMode);
-    if (reviewMode) sidebar.classList.add('open');
-    else sidebar.classList.remove('open');
-    hidePopover();
+  countLabel.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
   });
 
   $('mdv-sb-close').addEventListener('click', () => {
@@ -113,8 +101,8 @@
     return { text, before, after, rect };
   }
 
-  document.addEventListener('mouseup', () => {
-    if (!reviewMode) return;
+  document.addEventListener('mouseup', (e) => {
+    if (popover.contains(e.target)) return;
     const cap = captureSelection();
     if (!cap) { hidePopover(); return; }
     pendingSelection = cap;
@@ -126,6 +114,10 @@
   document.addEventListener('mousedown', (e) => {
     if (popover.contains(e.target)) return;
     hidePopover();
+  });
+
+  $('mdv-popover-add').addEventListener('mousedown', (e) => {
+    e.preventDefault();
   });
 
   $('mdv-popover-add').addEventListener('click', () => {
@@ -186,6 +178,5 @@
 
   loadAll();
 
-  // Expose for Task 10 to extend.
   window.__mdv = { loadAll, render, persist, get comments() { return comments; }, set comments(v) { comments = v; }, renderSidebar, escapeHtml };
 })();
