@@ -130,19 +130,30 @@
     sidebar.classList.remove('open');
   });
 
+  let selectionTimer = null;
+
   document.addEventListener('mouseup', (e) => {
-    // Clicks inside popover or sidebar should not be treated as new selections.
     if (popover.contains(e.target) || sidebar.contains(e.target)) return;
+    clearTimeout(selectionTimer);
     const cap = captureSelection();
-    if (cap) dispatch({ type: 'SELECT', selection: cap });
-    else dispatch({ type: 'CLEAR_SELECTION' });
+    if (!cap) { dispatch({ type: 'CLEAR_SELECTION' }); return; }
+    // Delay so a quick select-then-copy (Cmd+C) flow never sees the popover.
+    selectionTimer = setTimeout(() => {
+      dispatch({ type: 'SELECT', selection: cap });
+    }, 350);
   });
 
   document.addEventListener('mousedown', (e) => {
     if (popover.contains(e.target) || sidebar.contains(e.target)) return;
-    // Only collapse PROBE when a click starts outside; mouseup will follow.
-    // CLEAR_SELECTION is a no-op in COMPOSE so this won't close the input.
+    clearTimeout(selectionTimer);
     if (state.mode === PROBE) dispatch({ type: 'CLEAR_SELECTION' });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      clearTimeout(selectionTimer);
+      if (state.mode === PROBE) dispatch({ type: 'CLEAR_SELECTION' });
+    }
   });
 
   $('mdv-popover-add').addEventListener('mousedown', (e) => {
