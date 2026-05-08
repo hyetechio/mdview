@@ -70,3 +70,27 @@ mark.mdv-active { background: #b6d7ff; }
 .mdv-sb-input-actions button { padding: 5px 14px; border-radius: 6px; font-size: 12px;
   font-weight: 600; cursor: pointer; border: 1px solid #d1d9e0; background: #fff; color: #1f2328; font-family: inherit; }
 .mdv-sb-input-actions button:last-child { background: #0969da; color: #fff; border-color: #0969da; }
+
+/* Email-component copy buttons (Subject / To / Cc / Bcc / From / Body).
+   Active only when an email-shaped MD is detected (a **Subject:** line is present).
+   Each component is wrapped in a .mdv-component div with a labeled button hanging in the
+   right margin. Buttons fade in on hover. The clipboard payload is clean semantic HTML
+   (no inline styles, no classes, no IDs) so Gmail compose inherits its own font on paste. */
+#mdv-content .mdv-component { position: relative; }
+#mdv-content .mdv-component-btn {
+  position: absolute; top: 0; right: -148px;
+  padding: 4px 10px;
+  background: #0969da; color: #fff; border: 0; border-radius: 4px;
+  cursor: pointer; font-size: 11px; font-weight: 600; line-height: 1.4;
+  font-family: inherit; white-space: nowrap;
+  opacity: 0; transition: opacity .15s, background .15s;
+  user-select: none;
+}
+#mdv-content .mdv-component:hover .mdv-component-btn { opacity: 0.85; }
+#mdv-content .mdv-component-btn:hover { opacity: 1; background: #0860c4; }
+#mdv-content .mdv-component-btn.mdv-copied { opacity: 1; background: #1a7f37; }
+
+/* Top-bar "Copy email for Gmail" button (shown only in email mode) */
+.mdv-copy-all { color: #0969da !important; font-weight: 600 !important; }
+.mdv-copy-all:hover { background: #ddf4ff !important; color: #0860c4 !important; }
+.mdv-copy-all.mdv-copied { background: #dafbe1 !important; color: #1a7f37 !important; }

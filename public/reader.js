@@ -46,7 +46,200 @@
 
   function render() {
     content.innerHTML = window.marked.parse(mdSource);
+    injectComponentButtons();
     renderSidebar();
+  }
+
+  // Marker-paragraph detection. Email drafts use bold field labels: **Subject:**, **To:**, **Cc:**,
+  // **Bcc:**, **From:**. Each becomes its own "copy field value" component.
+  // After a marker run, the contiguous block of non-marker content up to the next <hr> or another
+  // marker is treated as the "Body" component and gets a "Copy Body" button (clean HTML).
+  const FIELD_MARKERS = ['Subject:', 'To:', 'Cc:', 'Bcc:', 'From:'];
+
+  function injectComponentButtons() {
+    // Email-mode gate: only inject component-copy buttons if a Subject marker exists.
+    // Non-email markdown gets no per-component buttons (and no "Copy all" — see below).
+    const blocks = Array.from(content.children);
+    const isEmail = blocks.some((b) => matchFieldMarker(b) === 'Subject');
+
+    const copyAllBtn = $('mdv-copy-all');
+    if (copyAllBtn) {
+      if (isEmail) {
+        copyAllBtn.hidden = false;
+        copyAllBtn.textContent = 'Copy email for Gmail';
+        copyAllBtn.title = 'Copy entire email body as clean HTML, paste-ready for Gmail compose';
+      } else {
+        copyAllBtn.hidden = true;
+      }
+    }
+
+    if (!isEmail) return;
+
+    let i = 0;
+    while (i < blocks.length) {
+      const b = blocks[i];
+      const fieldName = matchFieldMarker(b);
+      if (fieldName) {
+        wrapAsComponent([b], fieldName, getFieldValue(b, fieldName));
+        i += 1;
+        // Skip past any additional field-marker paragraphs (each gets its own button)
+        let firstBodyIdx = i;
+        while (firstBodyIdx < blocks.length && matchFieldMarker(blocks[firstBodyIdx])) {
+          const f2 = matchFieldMarker(blocks[firstBodyIdx]);
+          wrapAsComponent([blocks[firstBodyIdx]], f2, getFieldValue(blocks[firstBodyIdx], f2));
+          firstBodyIdx += 1;
+        }
+        // Body span ends at next <hr> or doc end
+        let bodyEnd = firstBodyIdx;
+        while (bodyEnd < blocks.length && blocks[bodyEnd].tagName !== 'HR') {
+          bodyEnd += 1;
+        }
+        if (bodyEnd > firstBodyIdx) {
+          wrapAsComponent(blocks.slice(firstBodyIdx, bodyEnd), 'Body', null);
+        }
+        i = bodyEnd;
+      } else {
+        i += 1;
+      }
+    }
+  }
+
+  function matchFieldMarker(el) {
+    if (!el || el.tagName !== 'P') return null;
+    const first = el.firstElementChild;
+    if (!first || first.tagName !== 'STRONG') return null;
+    const text = first.textContent.trim();
+    for (const m of FIELD_MARKERS) {
+      if (text === m || text === m.replace(':', '')) return m.replace(':', '');
+    }
+    return null;
+  }
+
+  function getFieldValue(p, fieldName) {
+    // Concatenate everything after the leading <strong> as the value.
+    const strong = p.firstElementChild;
+    let value = '';
+    let node = strong.nextSibling;
+    while (node) {
+      value += node.textContent;
+      node = node.nextSibling;
+    }
+    return value.trim();
+  }
+
+  function wrapAsComponent(blocks, label, plainValue) {
+    if (!blocks.length) return;
+    const parent = blocks[0].parentNode;
+    const wrap = document.createElement('div');
+    wrap.className = 'mdv-component mdv-component-' + label.toLowerCase();
+    parent.insertBefore(wrap, blocks[0]);
+    blocks.forEach((b) => wrap.appendChild(b));
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mdv-component-btn';
+    btn.textContent = 'Copy ' + label + ' for Gmail';
+    btn.title = 'Copy ' + label + ' as clean HTML, paste-ready for Gmail';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyComponent(wrap, btn, plainValue, label);
+    });
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('mouseup', (e) => e.stopPropagation());
+    wrap.appendChild(btn);
+  }
+
+  // Strip style/class/id attributes from a node tree, leaving only semantic HTML.
+  // Gmail (and other rich-text editors) inherit their own styles when pasted HTML has none.
+  function stripAttrs(root) {
+    const all = root.querySelectorAll('*');
+    all.forEach((el) => {
+      el.removeAttribute('style');
+      el.removeAttribute('class');
+      el.removeAttribute('id');
+      // Drop any data-* attributes too
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.startsWith('data-')) el.removeAttribute(attr.name);
+      }
+    });
+    if (root.removeAttribute) {
+      root.removeAttribute('style');
+      root.removeAttribute('class');
+      root.removeAttribute('id');
+    }
+    return root;
+  }
+
+  // Remove our own copy-button markup from a clone so it doesn't end up in the clipboard.
+  function stripCopyMarkup(node) {
+    node.querySelectorAll('.mdv-copy-btn, .mdv-component-btn').forEach((b) => b.remove());
+    node.querySelectorAll('.mdv-copyable').forEach((el) => el.classList.remove('mdv-copyable'));
+  }
+
+  async function writeHtmlToClipboard(html, plain) {
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      throw new Error('Clipboard API unavailable (need a recent browser, served over localhost)');
+    }
+    await navigator.clipboard.write([
+      new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      }),
+    ]);
+  }
+
+  // Copy an email component to the clipboard.
+  // - Field components (Subject, To, Cc, Bcc, From): plainValue is the bare value text. Copy as
+  //   plain text only — pasting "Re: ..." into a Subject input keeps no formatting weirdness.
+  // - Body component: plainValue is null. Copy as clean HTML + plain. Paste into Gmail compose body.
+  async function copyComponent(wrap, btn, plainValue, label) {
+    const original = btn.textContent;
+    try {
+      if (plainValue !== null && plainValue !== undefined) {
+        await navigator.clipboard.writeText(plainValue);
+      } else {
+        const clone = wrap.cloneNode(true);
+        stripCopyMarkup(clone);
+        stripAttrs(clone);
+        // Unwrap: copy inner content, not the .mdv-component div itself.
+        const html = clone.innerHTML;
+        const plain = wrap.innerText
+          .replace(new RegExp('Copy ' + label + ' for Gmail\\s*$'), '')
+          .trim();
+        await writeHtmlToClipboard(html, plain);
+      }
+      btn.textContent = '✓ Copied';
+      btn.classList.add('mdv-copied');
+    } catch (e) {
+      console.error('clipboard write failed', e);
+      btn.textContent = '✗ Error';
+    }
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('mdv-copied');
+    }, 1400);
+  }
+
+  async function copyAll() {
+    const btn = $('mdv-copy-all');
+    const original = btn.textContent;
+    try {
+      const clone = content.cloneNode(true);
+      stripCopyMarkup(clone);
+      stripAttrs(clone);
+      const html = clone.innerHTML;
+      const plain = content.innerText;
+      await writeHtmlToClipboard(html, plain);
+      btn.textContent = '✓ Copied';
+      btn.classList.add('mdv-copied');
+    } catch (e) {
+      console.error('clipboard write failed', e);
+      btn.textContent = '✗ Error';
+    }
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('mdv-copied');
+    }, 1400);
   }
 
   function renderSidebar() {
@@ -125,6 +318,8 @@
   countLabel.addEventListener('click', () => {
     sidebar.classList.toggle('open');
   });
+
+  $('mdv-copy-all').addEventListener('click', () => { copyAll(); });
 
   $('mdv-sb-close').addEventListener('click', () => {
     sidebar.classList.remove('open');
